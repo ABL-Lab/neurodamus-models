@@ -1,0 +1,98 @@
+/**
+ * ShotNoiseProcessHelper.hoc
+ * @brief Helper for instantiating ShotNoise_process (Poisson shot noise conductance)
+ * for representing a population of synapses, the so-called pooled synapse 
+ * @date 2026-02-09
+ */
+
+// Specific values for these processes.
+strdef ShotNoiseProcessHelper_NeededAttributes
+ShotNoiseProcessHelper_NeededAttributes = "tau_d;tau_r;n_syn;firing_rate;reversal_potential"
+
+/* -------------------- helper template -------------------- */
+
+load_file("RNGSettings.hoc")
+
+begintemplate ShotNoiseProcessHelper
+
+objref synapse
+public synapse
+
+/* -------------------- math helpers -------------------- */
+
+func use_star() { local fr, u_syn, tau_rec, tau_fac
+    fr = $1
+    u_syn = $2
+    tau_rec = $3 / 1000  // ms -> s
+    tau_fac = $4 / 1000  // ms -> s
+    return (u_syn * (1 + fr * tau_fac)) / (1 + u_syn * fr * tau_rec + u_syn * fr * tau_fac + u_syn * fr * fr * tau_rec * tau_fac)
+}
+
+proc get_dual_exp_correction_factors() { local tau_r, tau_d, tp, K
+    tau_r = $1
+    tau_d = $2
+    tp = (tau_r * tau_d) / (tau_d - tau_r) * log(tau_d / tau_r)
+    K = 1 / (exp(-tp / tau_d) - exp(-tp / tau_r))
+    // mean correction
+    $&3 = (K * (tau_d - tau_r)) / tau_d
+    // std correction
+    $&4 = sqrt((K * K * (tau_d/2 - (2*tau_d*tau_r)/(tau_d+tau_r) + tau_r/2)) / (tau_d/2))
+}
+
+proc calculate_corrected_ProbAMPANMDA_gfluct_parameters() { local n_syn, fr, gmax, tau_d, tau_r, u_syn, tau_rec, tau_fac, rel_prop, mean_corr, std_corr
+    n_syn   = $1
+    fr      = $2
+    gmax    = $3 / 1000  // nS -> uS
+    tau_d   = $4
+    tau_r   = $5
+    u_syn   = $6
+    tau_rec = $7
+    tau_fac = $8
+    
+    if (fr == 0) {
+        $&9  = 0
+        $&10 = 0
+        return
+    }
+    
+    rel_prop = use_star(fr, u_syn, tau_rec, tau_fac)
+    $&9  = n_syn * fr * tau_d * gmax * rel_prop
+    $&10 = gmax * sqrt((tau_d * n_syn * fr * rel_prop) / 2)
+    
+    get_dual_exp_correction_factors(tau_r, tau_d, &mean_corr, &std_corr)
+    
+    $&9  = $&9  * mean_corr
+    $&10 = $&10 * std_corr
+}
+
+proc init() { local tgid, x, procID, baseSeed, spopid, tpopid, g0, std  localobj params, rngInfo
+    tgid     = $1
+    params   = $o2
+    x        = $3
+    procID   = $4
+    baseSeed = $5
+    
+    if (numarg() >= 7) {
+        spopid = $6
+        tpopid = $7
+    } else {
+        spopid = 0
+        tpopid = 1
+    }
+    
+    rngInfo = new RNGSettings()
+    synapse = new ShotNoiseProcess(x)
+    
+    calculate_corrected_ProbAMPANMDA_gfluct_parameters(params.n_syn, params.firing_rate, params.weight, params.tau_d, params.tau_r, params.U, params.D, params.F, &g0, &std)
+    
+    synapse.g0  = g0
+    synapse.std = std
+    synapse.tau = params.tau_d
+    synapse.E   = params.reversal_potential
+    
+    // Random123 / Neurodamus-safe RNG seeding
+    synapse.setRNG(tgid, 100000 + procID, rngInfo.getSynapseSeed() + 200)
+    synapse.synapseID = procID
+}
+
+endtemplate ShotNoiseProcessHelper
