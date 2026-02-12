@@ -1,8 +1,8 @@
 /**
- * ShotNoiseProcessHelper.hoc
- * @brief Helper for instantiating ShotNoise_process (Poisson shot noise conductance)
- * for representing a population of synapses, the so-called pooled synapse 
- * @date 2026-02-09
+ * @file ShotNoiseProcessHelper.hoc
+ * @brief Helper for instantiating ShotNoiseProcess synapses, representing pooled synapses
+ * @author nguyen
+ * @date 2026-02-12
  */
 
 // Specific values for these processes.
@@ -39,7 +39,7 @@ proc get_dual_exp_correction_factors() { local tau_r, tau_d, tp, K
     $&4 = sqrt((K * K * (tau_d/2 - (2*tau_d*tau_r)/(tau_d+tau_r) + tau_r/2)) / (tau_d/2))
 }
 
-proc calculate_corrected_ProbAMPANMDA_gfluct_parameters() { local n_syn, fr, gmax, tau_d, tau_r, u_syn, tau_rec, tau_fac, rel_prop, mean_corr, std_corr
+proc calculate_ProbAMPANMDA_gfluct_parameters() { local n_syn, fr, gmax, tau_d, tau_r, u_syn, tau_rec, tau_fac, rel_prop, mean_corr, std_corr
     n_syn   = $1
     fr      = $2
     gmax    = $3 / 1000  // nS -> uS
@@ -83,14 +83,14 @@ proc init() { local tgid, x, procID, baseSeed, spopid, tpopid, g0, std  localobj
     rngInfo = new RNGSettings()
     synapse = new ShotNoiseProcess(x)
     
-    calculate_corrected_ProbAMPANMDA_gfluct_parameters(params.n_syn, params.firing_rate, params.weight, params.tau_d, params.tau_r, params.U, params.D, params.F, &g0, &std)
+    calculate_ProbAMPANMDA_gfluct_parameters(params.n_syn, params.firing_rate, params.weight, params.tau_d, params.tau_r, params.U, params.D, params.F, &g0, &std)
     
     synapse.g0  = g0
     synapse.std = std
     synapse.tau = params.tau_d
     synapse.E   = params.reversal_potential
     
-    // Random123 / Neurodamus-safe RNG seeding
+    // Random123 / Neurodamus-safe RNG seeding; RNG seed referenced from GluSynapseHelper.hoc
     synapse.setRNG(tgid, 100000 + procID, rngInfo.getSynapseSeed() + 200)
     synapse.synapseID = procID
 }
