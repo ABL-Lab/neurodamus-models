@@ -51,12 +51,12 @@ NEURON {
     POINT_PROCESS GluSynapse
     : AMPA Receptor
     GLOBAL tau_r_AMPA, E_AMPA
-    RANGE tau_d_AMPA, gmax0_AMPA, gmax_d_AMPA, gmax_p_AMPA, g_AMPA
+    RANGE tau_d_AMPA, gmax0_AMPA, gmax_d_AMPA, gmax_p_AMPA, g_AMPA, calcium_current_flag
     : NMDA Receptor
     GLOBAL scale_NMDA, slope_NMDA
     GLOBAL tau_r_NMDA, tau_d_NMDA, E_NMDA
-    RANGE gmax_NMDA, g_NMDA
-    GLOBAL mg
+    RANGE gmax_NMDA, g_NMDA, i_AMPA, i_NMDA
+    RANGE mg
     : Stochastic Tsodyks-Markram Multi-Vesicular Release
     RANGE Use, Dep, Fac, Nrrp
     RANGE Use_d, Use_p
@@ -64,7 +64,7 @@ NEURON {
     : NMDAR-mediated calcium current
     RANGE ica_NMDA
     : Spine
-    RANGE volume_CR
+    RANGE volume_CR, cai_CR, effcai_GB
     : VDCC (R-type)
     GLOBAL ljp_VDCC, vhm_VDCC, km_VDCC, mtau_VDCC, vhh_VDCC, kh_VDCC, htau_VDCC, gca_bar_VDCC
     RANGE ica_VDCC
@@ -85,6 +85,7 @@ NEURON {
     GLOBAL init_depleted
     : For debugging
     :RANGE sgid, tgid
+    RANGE uncaging_mode
 }
 
 
@@ -164,6 +165,9 @@ PARAMETER {
     init_depleted = 0          :// 0 -> init full (old behavior)
     :sgid = -1
     :tgid = -1
+    calcium_current_flag = 1
+
+    uncaging_mode       = 0    : 0=normal synapse, 1=uncaging mode
 }
 
 
@@ -216,6 +220,8 @@ ASSIGNED {
     delay_times
     delay_weights
     next_delay (ms)
+    i_AMPA (nA)
+    i_NMDA (nA)
 }
 
 STATE {
@@ -247,7 +253,11 @@ INITIAL{
     A_NMDA      = 0
     B_NMDA      = 0
     : Stochastic Tsodyks-Markram Multi-Vesicular Release
-    Use_GB      = Use
+    if (uncaging_mode) {
+        Use_GB  = 1
+    } else {
+        Use_GB  = Use
+    }
     : Postsynaptic Ca2+ dynamics
     cai_CR      = min_ca_CR
     : Long-term synaptic plasticity
@@ -260,6 +270,7 @@ INITIAL{
 
     : Initialize watchers
     net_send(0, 1)
+
 }
 
 PROCEDURE setup_delay_vecs() {
@@ -281,7 +292,7 @@ ENDVERBATIM
 
 
 BREAKPOINT {
-    LOCAL Eca_syn, mggate, i_AMPA, i_NMDA, Pf_NMDA, gca_bar_abs_VDCC, gca_VDCC
+    LOCAL Eca_syn, mggate, Pf_NMDA, gca_bar_abs_VDCC, gca_VDCC
     SOLVE state METHOD euler
     : AMPA Receptor
     g_AMPA = (1e-3)*gmax_AMPA*(B_AMPA - A_AMPA)
@@ -297,7 +308,7 @@ BREAKPOINT {
     gca_bar_abs_VDCC = gca_bar_VDCC * 4(um2)*PI*(3(1/um3)/4*volume_CR*1/PI)^(2/3)
     gca_VDCC = (1e-3) * gca_bar_abs_VDCC * m_VDCC * m_VDCC * h_VDCC
     Eca_syn = nernst(cai_CR, cao_CR, 2)
-    ica_VDCC = gca_VDCC*(v-Eca_syn)
+    ica_VDCC = gca_VDCC*(v-Eca_syn)*calcium_current_flag
     : Update synaptic voltage (for recording convenience)
     vsyn = v
     : Update current
@@ -315,20 +326,24 @@ DERIVATIVE state {
     A_NMDA'      = - A_NMDA/tau_r_NMDA
     B_NMDA'      = - B_NMDA/tau_d_NMDA
     : Stochastic Tsodyks-Markram Multi-Vesicular Release
-    Use_GB'         = (Use_d + rho_GB*(Use_p - Use_d) - Use_GB) / ((1e3)*tau_exp_GB)
+    if (uncaging_mode) {
+        Use_GB'  = 0
+    } else {
+        Use_GB'  = (Use_d + rho_GB*(Use_p - Use_d) - Use_GB) / ((1e3)*tau_exp_GB)
+    }
     : VDCC (R-type)
     minf_VDCC    = 1 / (1 + exp(((vhm_VDCC - ljp_VDCC) - v) / km_VDCC))
     hinf_VDCC    = 1 / (1 + exp(((vhh_VDCC - ljp_VDCC) - v) / kh_VDCC))
     m_VDCC'      = (minf_VDCC-m_VDCC)/mtau_VDCC
     h_VDCC'      = (hinf_VDCC-h_VDCC)/htau_VDCC
-    : Postsynaptic Ca2+ dynamics
-    cai_CR'      = - (1e-9)*(ica_NMDA + ica_VDCC)*gamma_ca_CR/((1e-15)*volume_CR*2*FARADAY)
-                   - (cai_CR - min_ca_CR)/tau_ca_CR
     : Long-term synaptic plasticity
     effcai_GB'   = - effcai_GB/tau_effca_GB + (cai_CR - min_ca_CR)
     rho_GB'      = ( - rho_GB*(1 - rho_GB)*(rho_star_GB - rho_GB)
                      + pot_GB*gamma_p_GB*(1 - rho_GB)
                      - dep_GB*gamma_d_GB*rho_GB ) / ((1e3)*tau_ind_GB)
+    : Postsynaptic Ca2+ dynamics
+    cai_CR'      = - (1e-9)*(ica_NMDA + ica_VDCC)*gamma_ca_CR/((1e-15)*volume_CR*2*FARADAY)
+                   - (cai_CR - min_ca_CR)/tau_ca_CR
 }
 
 
@@ -337,15 +352,21 @@ NET_RECEIVE (weight, u, tsyn (ms), recovered, unrecovered, nc_type) {
     LOCAL p_rec, released, tp, factor, rec
     INITIAL {
         weight = 1
-        u = 0
-        tsyn = 0 (ms)
-        if (init_depleted){
-            recovered = 0
-            unrecovered = Nrrp
-        } else {
+        if (uncaging_mode) {
+            u = 1
             recovered = Nrrp
             unrecovered = 0
+        } else {
+            u = 0
+            if (init_depleted){
+                recovered = 0
+                unrecovered = Nrrp
+            } else {
+                recovered = Nrrp
+                unrecovered = 0
+            }
         }
+        tsyn = 0 (ms)
         if (nc_type == 0) {   : pre-synaptic netcon
     VERBATIM
             // setup self events for delayed connections to change weights
@@ -375,43 +396,53 @@ NET_RECEIVE (weight, u, tsyn (ms), recovered, unrecovered, nc_type) {
             : WARNING In this model *weight* is only used to activate/deactivate the
             :         synapse. The conductance is stored in gmax_AMPA and gmax_NMDA.
             if(verbose > 0){ printf("Inactive synapse, weight = %g\n", weight) }
-        } else {
-            : Flag 0: Regular spike
-            if(verbose > 0){ printf("Flag 0, Regular spike\n") }
-            : Update facilitation variable as Eq. 2 in Fuhrmann et al. 2002
-            u = Use_GB + u*(1 - Use_GB)*exp(-(t - tsyn)/Fac)
-            if ( verbose > 0 ) { printf("\tVesicle release probability = %g\n", u) }
-            : Recovery
-            p_rec = 1 - exp(-(t - tsyn)/Dep)
-            if ( verbose > 0 ) { printf("\tVesicle recovery probability = %g\n", p_rec) }
-            if ( verbose > 0 ) { printf("\tVesicle available before recovery = %g\n", recovered) }
-            recovered = recovered + brand(unrecovered, p_rec)
-            if ( verbose > 0 ) { printf("\tVesicles available after recovery = %g\n", recovered) }
-            : Release
-            rec = recovered  : Make a copy so we can change it for single vesicle minis w/o messing with recovered
-            : Consider only a single recovered vesicle for minis (if minis_single_vesicle flag is set to 1)
-            if (rec > 1 && minis_single_vesicle && nc_type == 1) { rec = 1 }
-            released = brand(rec, u)
-            if ( verbose > 0 ) { printf("\tReleased %g vesicles out of %g\n", released, recovered) }
-            : Update vesicle pool
-            recovered = recovered - released
-            unrecovered = Nrrp - recovered
-            if ( verbose > 0 ) { printf("\tFinal vesicle count, Recovered = %g, Unrecovered = %g, Nrrp = %g\n", recovered, unrecovered, Nrrp) }
-            : Update AMPA variables
-            tp = (tau_r_AMPA*tau_d_AMPA)/(tau_d_AMPA-tau_r_AMPA)*log(tau_d_AMPA/tau_r_AMPA)  : Time to peak
-            factor = 1 / (-exp(-tp/tau_r_AMPA)+exp(-tp/tau_d_AMPA))  : Normalization factor
-            A_AMPA = A_AMPA + released/Nrrp*factor
-            B_AMPA = B_AMPA + released/Nrrp*factor
-            : Update NMDA variables
-            tp = (tau_r_NMDA*tau_d_NMDA)/(tau_d_NMDA-tau_r_NMDA)*log(tau_d_NMDA/tau_r_NMDA)  : Time to peak
-            factor = 1 / (-exp(-tp/tau_r_NMDA)+exp(-tp/tau_d_NMDA))  : Normalization factor
-            A_NMDA = A_NMDA + released/Nrrp*factor
-            B_NMDA = B_NMDA + released/Nrrp*factor
-            : Update tsyn
-            : tsyn knows about all spikes, not only those that released
-            : i.e. each spike can increase the u, regardless of recovered state
-            :      and each spike trigger an evaluation of recovery
-            tsyn = t
+        } 
+        else {
+                if (uncaging_mode) {
+                    : Uncaging mode
+                    u = 1
+                    recovered = Nrrp
+                    released = Nrrp
+                } 
+                else {
+                    : Flag 0: Regular spike
+                    if(verbose > 0){ printf("Flag 0, Regular spike\n") }
+                    : Update facilitation variable as Eq. 2 in Fuhrmann et al. 2002
+                    u = Use_GB + u*(1 - Use_GB)*exp(-(t - tsyn)/Fac)
+                    if ( verbose > 0 ) { printf("\tVesicle release probability = %g\n", u) }
+                    : Recovery
+                    p_rec = 1 - exp(-(t - tsyn)/Dep)
+                    if ( verbose > 0 ) { printf("\tVesicle recovery probability = %g\n", p_rec) }
+                    if ( verbose > 0 ) { printf("\tVesicle available before recovery = %g\n", recovered) }
+                    recovered = recovered + brand(unrecovered, p_rec)
+                    if ( verbose > 0 ) { printf("\tVesicles available after recovery = %g\n", recovered) }
+                    : Release
+                    rec = recovered  : Make a copy so we can change it for single vesicle minis w/o messing with recovered
+                    : Consider only a single recovered vesicle for minis (if minis_single_vesicle flag is set to 1)
+                    if (rec > 1 && minis_single_vesicle && nc_type == 1) { rec = 1 }
+                    released = brand(rec, u)
+                    if ( verbose > 0 ) { printf("\tReleased %g vesicles out of %g\n", released, recovered) }
+                    : Update vesicle pool
+                    recovered = recovered - released
+                    unrecovered = Nrrp - recovered
+                    if ( verbose > 0 ) { printf("\tFinal vesicle count, Recovered = %g, Unrecovered = %g, Nrrp = %g\n", recovered, unrecovered, Nrrp) }
+                }
+                
+                : Update AMPA variables
+                tp = (tau_r_AMPA*tau_d_AMPA)/(tau_d_AMPA-tau_r_AMPA)*log(tau_d_AMPA/tau_r_AMPA)  : Time to peak
+                factor = 1 / (-exp(-tp/tau_r_AMPA)+exp(-tp/tau_d_AMPA))  : Normalization factor
+                A_AMPA = A_AMPA + released/Nrrp*factor
+                B_AMPA = B_AMPA + released/Nrrp*factor
+                : Update NMDA variables
+                tp = (tau_r_NMDA*tau_d_NMDA)/(tau_d_NMDA-tau_r_NMDA)*log(tau_d_NMDA/tau_r_NMDA)  : Time to peak
+                factor = 1 / (-exp(-tp/tau_r_NMDA)+exp(-tp/tau_d_NMDA))  : Normalization factor
+                A_NMDA = A_NMDA + released/Nrrp*factor
+                B_NMDA = B_NMDA + released/Nrrp*factor
+                : Update tsyn
+                : tsyn knows about all spikes, not only those that released
+                : i.e. each spike can increase the u, regardless of recovered state
+                :      and each spike trigger an evaluation of recovery
+                tsyn = t
         }
     } else if(flag == 1) {
         : Flag 1, Initialize watchers
@@ -644,15 +675,14 @@ static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset
 }
 
 static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {
+    // make sure it's not previously set
+    assert(!_p_rng);
+    assert(!_p_delay_times && !_p_delay_weights);
+
     uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
     // make sure non-zero identifier seeds
     if (ia[0] != 0 || ia[1] != 0 || ia[2] != 0) {
         nrnran123_State** pv = (nrnran123_State**)(&_p_rng);
-#if !NRNBBCORE
-        if(*pv) {
-            nrnran123_deletestream(*pv);
-        }
-#endif
         // get new stream
         *pv = nrnran123_newstream3(ia[0], ia[1], ia[2]);
         // restore sequence
@@ -669,14 +699,8 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
         double* x_i = dArray + *doffset;
 
         // allocate vectors
-        if (!_p_delay_times) {
-            _p_delay_times = (double*)vector_new1(delay_times_sz);
-        }
-        assert(delay_times_sz == vector_capacity((IvocVect*)_p_delay_times));
-        if (!_p_delay_weights) {
-            _p_delay_weights = (double*)vector_new1(delay_weights_sz);
-        }
-        assert(delay_weights_sz == vector_capacity((IvocVect*)_p_delay_weights));
+        _p_delay_times = (double*)vector_new1(delay_times_sz);
+        _p_delay_weights = (double*)vector_new1(delay_weights_sz);
 
         double* delay_times_el = vector_vec((IvocVect*)_p_delay_times);
         double* delay_weights_el = vector_vec((IvocVect*)_p_delay_weights);
