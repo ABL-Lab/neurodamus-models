@@ -4,7 +4,8 @@ COMMENT
  * @brief
  * @author king, muller, reimann, ramaswamy
  * @date 2011-08-17
- * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ * @remark Copyright BBP/EPFL 2005-2021; All rights reserved.
+           Do not distribute without further notice.
  */
 ENDCOMMENT
 
@@ -498,7 +499,7 @@ VERBATIM
 ENDVERBATIM
 }
 
-PROCEDURE toggleVerbose() {
+FUNCTION toggleVerbose() {
     verboseLevel = 1 - verboseLevel
 }
 
