@@ -1,10 +1,14 @@
 COMMENT
 /**
  * @file ProbGABAAB.mod
+ * Last Modified on 10 Jul 2024 by Dhuruva Priyan
+ * -Added DERIVATIVE block to support CVODE
+ * ----------------------------------------------
  * @brief
  * @author king, muller
  * @date 2011-08-17
- * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ * @remark Copyright BBP/EPFL 2005-2021; All rights reserved.
+           Do not distribute without further notice.
  */
 ENDCOMMENT
 
@@ -52,7 +56,6 @@ NEURON {
     RANGE unoccupied, occupied, Nrrp
 
     RANGE i, i_GABAA, i_GABAB, g_GABAA, g_GABAB, g, e_GABAA, e_GABAB, GABAB_ratio
-    RANGE A_GABAA_step, B_GABAA_step, A_GABAB_step, B_GABAB_step
 
     NONSPECIFIC_CURRENT i
     BBCOREPOINTER rng
@@ -131,10 +134,6 @@ ASSIGNED {
         g (uS)
         factor_GABAA
         factor_GABAB
-        A_GABAA_step
-        B_GABAA_step
-        A_GABAB_step
-        B_GABAB_step
 
         rng
         usingR123            : TEMPORARY until mcellran4 completely deprecated
@@ -189,11 +188,6 @@ INITIAL {
         factor_GABAB = -exp(-tp_GABAB/tau_r_GABAB)+exp(-tp_GABAB/tau_d_GABAB) :GABAB Normalization factor - so that when t = tp_GABAB, gsyn = gpeak
         factor_GABAB = 1/factor_GABAB
 
-        A_GABAA_step = exp(dt*(( - 1.0 ) / tau_r_GABAA))
-        B_GABAA_step = exp(dt*(( - 1.0 ) / tau_d_GABAA))
-        A_GABAB_step = exp(dt*(( - 1.0 ) / tau_r_GABAB))
-        B_GABAB_step = exp(dt*(( - 1.0 ) / tau_d_GABAB))
-
     VERBATIM
         if( usingR123 ) {
             nrnran123_setseq((nrnran123_State*)_p_rng, 0, 0);
@@ -223,7 +217,7 @@ ENDVERBATIM
 
 
 BREAKPOINT {
-        SOLVE state
+        SOLVE state METHOD euler
 
         g_GABAA = gmax*(B_GABAA-A_GABAA) :compute time varying conductance as the difference of state variables B_GABAA and A_GABAA
         g_GABAB = gmax*(B_GABAB-A_GABAB) :compute time varying conductance as the difference of state variables B_GABAB and A_GABAB
@@ -233,11 +227,11 @@ BREAKPOINT {
         i = i_GABAA + i_GABAB
 }
 
-PROCEDURE state() {
-        A_GABAA = A_GABAA*A_GABAA_step
-        B_GABAA = B_GABAA*B_GABAA_step
-        A_GABAB = A_GABAB*A_GABAB_step
-        B_GABAB = B_GABAB*B_GABAB_step
+DERIVATIVE state {
+    A_GABAA' = -A_GABAA / tau_r_GABAA
+    B_GABAA' = -B_GABAA / tau_d_GABAA
+    A_GABAB' = -A_GABAB / tau_r_GABAB
+    B_GABAB' = -B_GABAB / tau_d_GABAB
 }
 
 
@@ -500,7 +494,7 @@ VERBATIM
 ENDVERBATIM
 }
 
-PROCEDURE toggleVerbose() {
+FUNCTION toggleVerbose() {
     verboseLevel = 1 - verboseLevel
 }
 
