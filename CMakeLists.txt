@@ -18,6 +18,7 @@ option(NEURODAMUS_NCX_METABOLISM OFF)
 option(NEURODAMUS_NCX_NGV OFF)
 option(NEURODAMUS_NCX_PLASTICITY OFF)
 option(NEURODAMUS_NCX_V5 OFF)
+option(NEURODAMUS_NCX_V9 OFF)
 
 # NEURON does not install any CMake glue, we have to manually find nrnivmodl
 find_program(nrnivmodl nrnivmodl REQUIRED)
@@ -80,6 +81,10 @@ if("${NEURODAMUS_MECHANISMS}" STREQUAL "neocortex")
   if(NEURODAMUS_NCX_V5)
     list(APPEND input_mod_directories
          "${CMAKE_CURRENT_LIST_DIR}/${NEURODAMUS_MECHANISMS}/mod/v5")
+  endif()
+  if(NEURODAMUS_NCX_V9)
+    list(APPEND input_mod_directories
+         "${CMAKE_CURRENT_LIST_DIR}/${NEURODAMUS_MECHANISMS}/mod/v9")
   endif()
 else()
   list(APPEND input_mod_directories
