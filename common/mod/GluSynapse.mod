@@ -661,8 +661,10 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
     // increment intger offset (2 identifiers), no double data
     *ioffset += 5;
 
-    int delay_times_sz = iArray[5];
-    int delay_weights_sz = iArray[6];
+    // int delay_times_sz = iArray[5];   // absolute index
+    // int delay_weights_sz = iArray[6]; // absolute index
+    int delay_times_sz = iArray[*ioffset];      // relative to current offset
+    int delay_weights_sz = iArray[*ioffset + 1]; // relative to current offset
     *ioffset += 2;
 
     if ((delay_times_sz > 0) && (delay_weights_sz > 0)) {
