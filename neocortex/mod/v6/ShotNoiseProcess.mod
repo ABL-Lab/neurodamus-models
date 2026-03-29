@@ -27,7 +27,7 @@ NEURON {
     BBCOREPOINTER rng
     
     : Misc
-    RANGE synapseID
+    RANGE synapseID, selected_for_report
 }
 
 UNITS {
@@ -44,6 +44,7 @@ PARAMETER {
 
     : Misc
     synapseID = 0
+    selected_for_report = 0
 }
 
 VERBATIM
