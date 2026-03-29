@@ -43,8 +43,8 @@ proc calculate_ProbAMPANMDA_gfluct_parameters() { local n_syn, fr, gmax, tau_d, 
     n_syn   = $1
     fr      = $2
     gmax    = $3 / 1000  // nS -> uS
-    tau_d   = $4
-    tau_r   = $5
+    tau_d   = $4 / 1000  // ms -> s
+    tau_r   = $5 / 1000  // ms -> s
     u_syn   = $6
     tau_rec = $7
     tau_fac = $8
