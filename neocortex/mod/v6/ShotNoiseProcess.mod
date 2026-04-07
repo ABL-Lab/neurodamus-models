@@ -131,6 +131,13 @@ DERIVATIVE state {
 NET_RECEIVE (w) {
     LOCAL delay
 
+    if (flag != 1) {
+        VERBATIM
+        return;
+        ENDVERBATIM
+    }
+
+    : flag == 1: normal Poisson self-event
     g = g + q
     delay = invl(rate)
     : Force positive and ensure minimum delay for CoreNEURON compatibility
