@@ -27,7 +27,7 @@ NEURON {
     BBCOREPOINTER rng
     
     : Misc
-    RANGE synapseID
+    RANGE synapseID, selected_for_report
 }
 
 UNITS {
@@ -44,6 +44,7 @@ PARAMETER {
 
     : Misc
     synapseID = 0
+    selected_for_report = 0
 }
 
 VERBATIM
@@ -130,6 +131,13 @@ DERIVATIVE state {
 NET_RECEIVE (w) {
     LOCAL delay
 
+    if (flag != 1) {
+        VERBATIM
+        return;
+        ENDVERBATIM
+    }
+
+    : flag == 1: normal Poisson self-event
     g = g + q
     delay = invl(rate)
     : Force positive and ensure minimum delay for CoreNEURON compatibility
