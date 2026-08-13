@@ -2,7 +2,7 @@
  * @file ShotNoiseProcessHelper.hoc
  * @brief Helper for instantiating ShotNoiseProcess synapses, representing pooled synapses
  * @author nguyen
- * @date 2026-04-27
+ * @date 2026-07-29
  */
 
 // Specific values for these processes.
@@ -22,8 +22,8 @@ public synapse
 func use_star() { local fr, u_syn, tau_rec, tau_fac
     fr      = $1
     u_syn   = $2
-    tau_rec = $3 / 1000  // ms -> s
-    tau_fac = $4 / 1000  // ms -> s
+    tau_rec = $3
+    tau_fac = $4
     return (u_syn * (1 + fr * tau_fac)) / (1 + u_syn * fr * tau_rec + u_syn * fr * tau_fac + u_syn * fr * fr * tau_rec * tau_fac)
 }
 
@@ -35,7 +35,7 @@ proc get_dual_exp_correction_factors() { local tau_r, tau_d, tp, K
     // mean correction
     $&3 = (K * (tau_d - tau_r)) / tau_d
     // std correction  (variance of dual-exp kernel, normalised by tau_d)
-    $&4 = sqrt(K * K * (tau_d/2 - (2*tau_d*tau_r)/(tau_d+tau_r) + tau_r/2))
+    $&4 = sqrt((K * K * (tau_d/2 - (2*tau_d*tau_r)/(tau_d+tau_r) + tau_r/2)) / (tau_d/2))
 }
 
 proc calculate_ProbAMPANMDA_gfluct_parameters() { local n_syn, nrrp, fr, gmax, tau_d, tau_r, u_syn, tau_rec, tau_fac, rel_prop, mean_corr, std_corr
